@@ -1,0 +1,365 @@
+B <- 1000
+# theta_orig <- theta 
+sigma_est <- matrix(0, nrow = B)
+fixef_est <- matrix(0, ncol=6, nrow=B)
+scale_est <- matrix(0, ncol=3, nrow=B)
+shape_est <- matrix(0, ncol = 3, nrow = B)
+chol_est <- matrix(0, ncol = 3, nrow = B)
+D_est <- matrix(0, ncol = 3, nrow = B)
+omega_est <- matrix(0, ncol = 2,nrow = B)
+CE <- numeric(B)
+library(matrixcalc)
+options(width = 80)
+pij <- c_true <- pred_c <- list()
+pij_true <- list()
+for(i in seq_len(B)){
+
+wkdir <- "NNEM/Example_k-3/k=3_Results_n=1000_c0.05"
+file <- paste0(wkdir,"/nnem_size", i, "1000.RData")
+load(file)
+  theta <- result$theta
+  # print("Error Variance:");theta$sigma_e;theta_orig$sigma_e;(bias_sigma <- abs(theta$sigma_e - theta_orig$sigma_e))
+  if(!is.null(theta)){
+    #  if(theta$sigma_e>0){
+  sigma_est[i] <- theta$sigma_e
+  fixef_est[i,] <- matrix(theta$betas,nrow=1, byrow=T)
+  scale_est[i,] <- matrix(theta$scale, nrow = 1, byrow = T) 
+  shape_est[i,] <- matrix(theta$shape, nrow=1, byrow = T)
+  omega_est[i,] <- matrix(sqrt((theta$omegas)^2), nrow = 1, byrow=T)
+  D_est[i,] <- vech(theta$D)
+  chol_est[i, ] <- theta$cholesky[lower.tri(theta$cholesky, diag = T)]
+  true_components<-numeric(B)
+  for(j in seq_len(1000)){
+  red_c <- result$data_long[result$data_long$ID==j,]
+  true_components[j] <- unique(red_c$g)
+  }
+  true_mixing_prop <- function(x) {
+    pi1 <- (2 * exp(-0.1 * x^4)) / (1 + exp(-0.1 * x^4)) * as.numeric(x < 3)
+    pi2 <- (1 - (2 * exp(-0.1 * x^4)) / (1 + exp(-0.1 * x^4))) * as.numeric(x < 0)
+    pi3 <- (2 * exp(-0.1 * (x - 6)^4)) / (1 + exp(-0.1 * (x - 6)^4)) * as.numeric(x >= 3)
+    pi4 <- 1 - (pi1 + pi3)
+    return(cbind(pi1, pi3, pi4))
+  }
+# library(dplyr)
+  pi_true <- true_mixing_prop(result$x)
+  CE[i] <- mean(result$C  != true_components)
+  pij[i] <- list(theta$pj)
+  pij_true[i] <- list(pi_true)
+  }
+  extra <- nchar('||100%')
+  width <- options()$width
+  iter <- i
+  maxit <- B
+  step <- round(iter / maxit * (width - extra))
+  text <- sprintf('|%s%s|% 3s%%', strrep('=', step),
+                  strrep(' ', width - step - extra), round(iter / maxit * 100))
+  cat("\nSimulations Data Offload Progress:\n",text, '\n')
+  # Sys.sleep(0.5)
+  cat(if (iter == maxit) '\n' else '\014')
+}
+idxs_to_drop <- which(sigma_est > 0)
+sigma_est <- sigma_est[idxs_to_drop]
+scale_est <- scale_est[idxs_to_drop,]
+shape_est <- shape_est[idxs_to_drop,]
+fixef_est <- fixef_est[idxs_to_drop,]
+D_est <- D_est[idxs_to_drop,]
+chol_est <- chol_est[idxs_to_drop,]
+omega_est <- omega_est[idxs_to_drop,]
+
+B <- nrow(scale_est)
+true_p <- MSE_p <- numeric(3)
+for(k in seq_len(3)){
+MAB_pi <- true_pi <- matrix(ncol=B, nrow = 1000)
+for(i in seq_len(B)){
+  if(!is.null(pij[i][[1]])){
+  # print(k)
+MAB_pi[,i] <- pij[i][[1]][,k]
+true_pi[,i] <- (pij_true[i][[1]][,k])
+}}
+pi2 <- mean(abs(rowMeans(MAB_pi, na.rm = T) - rowMeans(true_pi, na.rm = T)));
+pi3 <- mean(rowMeans(((MAB_pi) - (true_pi))^2, na.rm = T))
+true_p[k] <- c(pi2)
+MSE_p[k] <- pi3
+
+}
+theta_orig <- theta
+true_p
+MSE_p
+print("Error Variance:");mean(sigma_est);theta_orig$sigma_e;#(bias_sigma <- abs(theta$sigma_e - theta_orig$sigma_e));mean(sigma_est)
+print("Cholesky");theta_orig$cholesky; colMeans(chol_est); #(bias_cholesky <- abs(theta$cholesky - theta_orig$cholesky));colMeans(chol_est)
+print("RE Variance-Covariance");colMeans(D_est);#vech(theta$D);(bias_D <- abs(vech(theta$D)-vech(theta_orig$D)));colMeans(D_est)
+print("Omegas:");colMeans(sqrt(omega_est^2)); theta_orig$omegas;#(bias_omegas <- abs(sqrt((theta$omegas)^2) - theta_orig$omegas));colMeans(omega_est)
+print("Longitudinal Fixef");colMeans(fixef_est); theta_orig$betas;#(bias_beta <- abs(theta$betas - theta_orig$betas));colMeans(fixef_est)
+print("Weibull Scales");colMeans(scale_est); theta_orig$scale;#(bias_scale <- abs((theta$scale)-(theta_orig$scale)));colMeans(scale_est)
+print("Weibull Shapes"); colMeans(shape_est); theta_orig$shape;# (bias_shape<- abs(theta$shape - theta_orig$shape));colMeans(shape_est)
+
+
+
+bias_E <- abs(mean(sigma_est)-theta_orig$sigma_e);bias_E;
+bias_scale <- abs(colMeans(scale_est)-matrix(theta_orig$scale, nrow = 1, byrow = T));bias_scale;colMeans(scale_est)
+bias_shape <- abs(colMeans(shape_est)-matrix(theta_orig$shape, nrow = 1, byrow = T));bias_shape;colMeans(shape_est)
+bias_fixef <- abs(colMeans(fixef_est)-matrix(theta_orig$betas, nrow = 1, byrow = T));bias_fixef; MAB_fixef <- (1/(3*(2+1)))*sum(bias_fixef); MAB_fixef;colMeans(fixef_est)
+bias_D <- abs(colMeans(D_est)-matrix(vech(theta_orig$D), nrow = 1, byrow = T));bias_D;colMeans(D_est)
+bias_cholesky <- abs(colMeans(chol_est)-matrix(theta_orig$cholesky[lower.tri(theta$cholesky, diag = T)], nrow = 1, byrow = T));bias_cholesky;colMeans(chol_est)
+bias_omegas <- abs(colMeans(omega_est)-matrix(theta_orig$omegas, nrow = 1, byrow = T));bias_omegas;colMeans(omega_est)
+
+# install.packages("caret")
+# MSE
+matE <- rep(theta_orig$sigma_e,B)
+MSE_sigma <- 1/B * t(sigma_est-matE)%*%(sigma_est-matE)
+# mean(CE)
+
+matB <- matrix(rep(theta_orig$betas,B), nrow=B, ncol=6, byrow = T)
+MSE_beta <- 1/B * sum(colSums((fixef_est-matB)^2))
+
+library(latex2exp)
+library(kableExtra)
+
+library(Metrics)
+
+mse(fixef_est, matB)
+MSE_sigma
+
+# sigma_e
+matE <- rep(theta_orig$sigma_e,B)
+MSE_sigma <- 1/B * t(sigma_est-matE)%*%(sigma_est-matE)
+abs_bias_E <- abs(mean(sigma_est)-theta_orig$sigma_e)
+
+mse(matE, sigma_est)
+# install.packages('yardstick')
+
+# beta
+
+matB <- matrix(rep(theta_orig$betas,B), nrow=B, ncol=6, byrow = T)
+# correction factor
+MSE_beta <- colMeans((fixef_est-matB)^2); sqrt(MSE_beta)
+MAB_beta <-   colMeans(abs(fixef_est-matB)); MAB_beta; 
+MSE_beta <- sapply(1:6, function(i) Metrics::mse(matB[,i], fixef_est[,i]))
+
+#Tau (Cholesky of D)
+matT <- matrix(rep(theta_orig$cholesky[lower.tri(theta_orig$cholesky, diag=T)],B), nrow=B, ncol=3, byrow = T)
+ave_T <- colMeans(chol_est)
+bias_cholesky <- abs(ave_T-matrix(theta_orig$cholesky[lower.tri(theta$cholesky, diag = T)], nrow = 1, byrow = T));bias_cholesky;
+MSE_T <- colMeans((chol_est-matT)^2); sqrt(MSE_T)
+MAB_T <-   colMeans(abs(chol_est-matT)); MAB_T
+
+#D
+bias_D <- abs(colMeans(D_est)-matrix(vech(theta_orig$D), nrow = 1, byrow = T));bias_D;
+ave_D <- colMeans(D_est)
+matD <- matrix(rep(vech(theta_orig$D),B), nrow = B, ncol=3, byrow = T)
+MSE_D <- sapply(1:3, function(i) Metrics::mse(matD[,i], D_est[,i]))
+# MAB_D <-  colMeans(abs(D_est-matD)); MAB_D
+
+#kappa (shapes)
+matK <- matrix(rep(theta_orig$shape,B), nrow=B, ncol=3, byrow = T)
+print("Weibull Shapes"); colMeans(shape_est); theta_orig$shape;# (bias_shape<- abs(theta$shape - theta_orig$shape));colMeans(shape_est)
+MSE_K <- sapply(1:3, function(i) Metrics::mse(matK[,i], shape_est[,i]))
+MAB_K <-  colMeans(abs(shape_est-matK)); MAB_K
+
+# lambda (scales)
+print("Weibull Scales");colMeans(scale_est); theta_orig$scale;#(bias_scale <- abs((theta$scale)-(theta_orig$scale)));colMeans(scale_est)
+matL <- matrix(rep(theta_orig$scale,B), nrow=B, ncol=3, byrow = T)
+MSE_L <- sapply(1:3, function(i) Metrics::mse(matL[,i], scale_est[,i])); MSE_L
+# MAB_L <-  colMeans(abs(scale_est-matL)); MAB_L
+# MAB_L <- sapply(1:3, function(i) mse(matL[,i], fixef_est[,i]))
+
+
+
+# omegas
+ave_omegas <- colMeans(omega_est)
+bias_omegas <- abs(colMeans(omega_est)-matrix(theta_orig$omegas, nrow = 1, byrow = T));bias_omegas;
+matO <- matrix(rep(theta_orig$omegas,B), nrow=B, ncol=2, byrow = T)
+MSE_O <- colMeans((omega_est-matO)^2); sqrt(MSE_O)
+MAB_O <-  colMeans(abs(omega_est-matO)); MAB_O
+
+# After running your bias.R script, create a comprehensive results table
+
+# After running your bias.R script, create a comprehensive results table
+
+library(knitr)
+library(kableExtra)
+library(xtable)
+
+# Create comprehensive results table
+results_table <- data.frame(
+  Parameter = c(
+    "$\\pi_1(x)$", "$\\pi_2(x)$", "$\\pi_3(x)$", 
+
+    # Error variance
+    "$\\sigma_e$",
+    
+    # Fixed effects (6 parameters)
+    "$\\beta_{11}$", "$\\beta_{12}$", "$\\beta_{21}$", "$\\beta_{22}$", "$\\beta_{31}$", "$\\beta_{32}$",
+    
+    # Cholesky elements (3 parameters)
+    "$d_{11}$", "$d_{21}$", "$d_{22}$",
+    
+    # Weibull shapes (3 parameters)
+    "$\\kappa_1$", "$\\kappa_2$", "$\\kappa_3$",
+    
+    # Weibull scales (3 parameters)  
+    "$\\lambda_1$", "$\\lambda_2$", "$\\lambda_3$",
+    
+    # Omega parameters (2 parameters)
+    "$\\omega_1$", "$\\omega_2$"
+  ),
+  
+  True_Value = c(
+    # True values - you'll need to replace these with actual theta_orig values
+    numeric(3),
+    theta_orig$sigma_e,
+    theta_orig$betas,
+    vech(theta_orig$D),
+    theta_orig$shape,
+    theta_orig$scale,
+    theta_orig$omegas
+  ),
+  
+  Estimate = c(
+    # Estimated values
+    numeric(3),
+    mean(sigma_est),
+    colMeans(fixef_est),
+    colMeans(D_est),
+    colMeans(shape_est),
+    colMeans(scale_est),
+    colMeans(omega_est)
+  ),
+  
+  Bias = c(
+    # Bias calculations
+    true_p,
+    (bias_E),
+    bias_fixef,
+    bias_D,
+    bias_shape,
+    bias_scale,
+    bias_omegas
+  ),
+  
+  # MAB = c(
+  #   # Absolute bias
+  #   MAB_E,
+  #   MAB_beta,
+  #   MAB_D,
+  #   MAB_K,
+  #   MAB_L,
+  #   MAB_O
+  # ),
+  
+  MSE = c(
+    # MSE values
+    MSE_p,
+    MSE_sigma,
+    MSE_beta,
+    MSE_D,
+    MSE_K,
+    MSE_L,
+    MSE_O
+  ),
+  
+  RMSE = c(
+    # Root MSE
+    sqrt(MSE_p),
+    sqrt(MSE_sigma),
+    sqrt(MSE_beta),
+    sqrt(MSE_D),
+    sqrt(MSE_K),
+    sqrt(MSE_L),
+    sqrt(MSE_O)
+  )
+)
+
+# Round numeric columns for better presentation
+numeric_cols <- c("True_Value", "Estimate", "Bias", "MSE", "RMSE")
+results_table[numeric_cols] <- lapply(results_table[numeric_cols], function(x) round(x, 3))
+results_table$True_Value <- sprintf("%.10g", results_table$True_Value)
+
+# Method 1: Using xtable for LaTeX export
+print("=== XTABLE OUTPUT ===")
+xtable_output <- xtable(results_table, 
+                       caption = "Bias and MSE Results for NNEM Parameter Estimates under 3 components (B=1000 simulations)",
+                       label = "tab:bias_mse_results",
+                       digits = 3)
+
+# Print LaTeX code
+print(xtable_output, 
+      type = "latex",
+      include.rownames = FALSE,
+      sanitize.text.function = function(x) x,  # Preserve LaTeX math notation
+      caption.placement = "top",
+      table.placement = "H")
+
+# Method 2: Using kable with kableExtra for more formatting options
+# print("=== KABLE OUTPUT ===")
+# kable_output <- kable(results_table, 
+#                      format = "latex", 
+#                      booktabs = TRUE,
+#                      escape = FALSE,  # Important for LaTeX math notation
+#                      caption = "Bias and MSE Results for Parameter Estimates (B=500 simulations)",
+#                      col.names = c("Parameter", "True Value", "Estimate", "Bias", "|Bias|", "MSE", "RMSE")) %>%
+#   kable_styling(latex_options = c("striped", "hold_position", "scale_down")) %>%
+#   pack_rows("Error Variance", 1, 1) %>%
+#   pack_rows("Fixed Effects", 2, 7) %>%
+#   pack_rows("Cholesky Elements", 8, B) %>%
+#   pack_rows("Weibull Shapes", 11, 13) %>%
+#   pack_rows("Weibull Scales", 14, 16) %>%
+#   pack_rows("Omega Parameters", 17, 18)
+
+# print(kable_output)
+
+# # Method 3: Create a summary table by parameter type
+# summary_table <- data.frame(
+#   Parameter_Type = c("Error Variance", "Fixed Effects", "Cholesky Elements", "Weibull Shapes", "Weibull Scales", "Omega Parameters"),
+#   Count = c(1, 6, 3, 3, 3, 2),
+#   Mean_Abs_Bias = c(
+#     MAB_E,
+#     mean(MAB_beta),
+#     mean(MAB_T),
+#     mean(MAB_K),
+#     mean(MAB_L),
+#     mean(MAB_O)
+#   ),
+#   Mean_MSE = c(
+#     mse_E,
+#     mean(MSE_beta),
+#     mean(MSE_T),
+#     mean(MSE_K),
+#     mean(MSE_L),
+#     mean(MSE_O)
+#   ),
+#   Mean_RMSE = c(
+#     sqrt(mse_E),
+#     mean(sqrt(MSE_beta)),
+#     mean(sqrt(MSE_T)),
+#     mean(sqrt(MSE_K)),
+#     mean(sqrt(MSE_L)),
+#     mean(sqrt(MSE_O))
+#   )
+# )
+
+# # Round summary table
+# summary_table[c("Mean_Abs_Bias", "Mean_MSE", "Mean_RMSE")] <- 
+#   lapply(summary_table[c("Mean_Abs_Bias", "Mean_MSE", "Mean_RMSE")], function(x) round(x, 4))
+
+# print("=== SUMMARY TABLE ===")
+# summary_xtable <- xtable(summary_table,
+#                         caption = "Summary of Bias and MSE by Parameter Type",
+#                         label = "tab:summary_results",
+#                         digits = 4)
+
+# print(summary_xtable,
+#       type = "latex",
+#       include.rownames = FALSE,
+#       caption.placement = "top",
+#       table.placement = "!htbp")
+
+# # Save tables to files for easy LaTeX inclusion
+# write.table(print(xtable_output, type = "latex", include.rownames = FALSE, 
+#                  sanitize.text.function = function(x) x),
+#            file = "bias_mse_table.tex", 
+#            quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+cat("Tables created successfully!\n")
+# cat("Main results table saved to: bias_mse_table.tex\n")
+# cat("You can include it in your LaTeX document with: \\input{bias_mse_table.tex}\n")
