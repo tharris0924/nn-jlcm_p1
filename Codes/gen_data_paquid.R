@@ -93,3 +93,7 @@ data_wide <- unique(temp2)
 data_wide$delta <- data_wide$dem
 data_wide$event_time <- data_wide$agedem-data_wide$age_init
 data_long <- data
+
+
+
+
