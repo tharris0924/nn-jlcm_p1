@@ -5,7 +5,7 @@ Here is a display of the mixing proportions estimated as the algorithm runs for 
 
 ![](https://github.com/tharris0924/nn-jlcm_p1/blob/main/Codes/mixing_proportions.gif)
 
-This repo provides the code to be able to generate the data for the simulated data above in `gen_data_k4.R` as well as the data used in the application in the `gen_data_paquid.R`.
+This repo provides the code to be able to generate the data for the simulated data above in `gen_data_k4.R` as well as the data used in the application in the `gen_data_paquid.R` function.
 
 ## References
 
